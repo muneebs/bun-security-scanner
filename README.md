@@ -4,11 +4,11 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Powered by OSV](https://img.shields.io/badge/powered%20by-OSV-4285F4.svg)](https://osv.dev)
 
-A [Bun security scanner](https://bun.sh/docs/install/security) that checks your dependencies against [Google's OSV database](https://osv.dev) before they get installed. No API keys. No external services to configure.
+A [Bun security scanner](https://bun.com/docs/pm/security-scanner-api) that checks your dependencies against vulnerability databases before they get installed. Uses [Google's OSV database](https://osv.dev) by default — no API keys required.
 
 - 🔍 **Automatic scanning**: runs transparently on every `bun install`
-- ⚡ **Fast**: 24-hour per-package cache means repeat installs skip the network entirely
-- 📦 **No API keys**: OSV is a free, open vulnerability database
+- ⚡ **Fast**: 24-hour per-package lockfile cache means repeat installs skip the network entirely
+- 🔀 **Two backends**: OSV (free, no setup) or Snyk (commercial, broader coverage)
 - 🔒 **Fail-open by default**: a downed API never blocks your install
 - 🎯 **CVSS fallback**: uses score-based severity when a label isn't available
 - 🛠️ **Configurable**: tune behaviour via environment variables
@@ -36,21 +36,36 @@ Point `bunfig.toml` directly at the entry file using an absolute or relative pat
 
 ```toml
 [install.security]
-scanner = "/absolute/path/to/bun-osv-scanner/src/index.ts"
-```
-
-Or relative to your project:
-
-```toml
-[install.security]
 scanner = "../bun-osv-scanner/src/index.ts"
 ```
 
-For the Snyk scanner, swap the path:
+---
+
+## 🔀 Backends
+
+The scanner ships with two backends, controlled by the `SCANNER_BACKEND` environment variable.
+
+### OSV (default)
+
+Queries [Google's OSV database](https://osv.dev) — free, no credentials required.
 
 ```toml
 [install.security]
-scanner = "../bun-osv-scanner/src/snyk/index.ts"
+scanner = "@bun-security-scanner/osv-os"
+```
+
+### Snyk
+
+Queries [Snyk's vulnerability database](https://security.snyk.io) — commercial, often surfaces issues earlier. Requires a Snyk account.
+
+```toml
+[install.security]
+scanner = "@bun-security-scanner/osv-os"
+
+[install.env]
+SCANNER_BACKEND = "snyk"
+SNYK_TOKEN = "your-token"
+SNYK_ORG_ID = "your-org-id"
 ```
 
 ---
@@ -61,9 +76,8 @@ When `bun install` runs, Bun calls the scanner with the full list of packages to
 
 1. **Filters** non-resolvable versions — workspace, git, file, and path dependencies are skipped
 2. **Checks the cache** — packages seen within the last 24 hours skip the network entirely
-3. **Queries OSV** in batches of up to 1,000 packages per request via the [OSV batch API](https://google.github.io/osv.dev/post-v1-querybatch/)
-4. **Fetches vulnerability details** in parallel for any hits
-5. **Returns advisories** to Bun, which surfaces them as warnings or fatal errors
+3. **Queries the backend** for any uncached packages
+4. **Returns advisories** to Bun, which surfaces them as warnings or fatal errors
 
 ---
 
@@ -74,13 +88,19 @@ When `bun install` runs, Bun calls the scanner with the full list of packages to
 | `fatal` | CRITICAL or HIGH severity; or CVSS score ≥ 7.0 | Installation halts |
 | `warn` | MODERATE or LOW severity; or CVSS score < 7.0 | User is prompted; auto-cancelled in CI |
 
-Severity is sourced from `database_specific.severity` on the OSV record. When that field is absent, the scanner falls back to the CVSS score. When neither is present, the advisory defaults to `warn`.
-
 ---
 
 ## ⚙️ Configuration
 
-All options are set via environment variables. They can be placed in your shell profile or scoped to a project via `bunfig.toml`.
+All options are set via environment variables, either in your shell or scoped to the project via `bunfig.toml`.
+
+### Shared
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SCANNER_BACKEND` | `osv` | Backend to use: `osv` or `snyk` |
+
+### OSV backend
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -90,11 +110,24 @@ All options are set via environment variables. They can be placed in your shell 
 | `OSV_TIMEOUT_MS` | `10000` | Per-request timeout in milliseconds |
 | `OSV_API_BASE` | `https://api.osv.dev/v1` | OSV API base URL |
 
+### Snyk backend
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SNYK_TOKEN` | — | **Required.** Snyk API token |
+| `SNYK_ORG_ID` | — | **Required.** Snyk organization ID |
+| `SNYK_FAIL_CLOSED` | `false` | Throw on network error instead of failing open |
+| `SNYK_NO_CACHE` | `false` | Always query Snyk fresh, bypassing the local cache |
+| `SNYK_CACHE_FILE` | `.snyk.lock` | Path to the cache file |
+| `SNYK_TIMEOUT_MS` | `10000` | Per-request timeout in milliseconds |
+| `SNYK_RATE_LIMIT` | `160` | Max requests per minute (hard cap: 180) |
+| `SNYK_CONCURRENCY` | `10` | Max concurrent connections |
+| `SNYK_API_BASE` | `https://api.snyk.io/rest` | Regional endpoint override |
+| `SNYK_API_VERSION` | `2024-04-29` | Snyk REST API version date |
+
 ### Fail-open vs fail-closed
 
-By default the scanner **fails open**: if OSV is unreachable the scan is skipped and installation proceeds normally. This prevents a downed API from blocking your team.
-
-Set `OSV_FAIL_CLOSED=true` to invert this — any network failure cancels the install, ensuring packages are never installed without a successful scan. Recommended for security-sensitive projects.
+By default the scanner **fails open**: if the backend is unreachable the scan is skipped and installation proceeds normally. Set `OSV_FAIL_CLOSED=true` or `SNYK_FAIL_CLOSED=true` to invert this.
 
 ```toml
 # bunfig.toml — strict mode
@@ -103,27 +136,31 @@ scanner = "@bun-security-scanner/osv-os"
 
 [install.env]
 OSV_FAIL_CLOSED = "true"
-OSV_TIMEOUT_MS = "5000"
 ```
 
 ---
 
 ## 🗄️ Cache
 
-Results are cached per `package@version` in `.osv.lock` at the project root with a 24-hour TTL. Because a published package version is immutable, its vulnerability profile is stable within that window.
+Results are cached per `package@version` in a lock file at the project root with a 24-hour TTL. Because a published package version is immutable, its vulnerability profile is stable within that window.
 
-The file is designed to be **committed to git** — similar to a lockfile, committing it means your team and CI share the cache from day one without waiting for the first network scan.
+| Backend | Lock file |
+|---------|-----------|
+| OSV | `.osv.lock` |
+| Snyk | `.snyk.lock` |
 
-Add it to your repository:
+The files are designed to be **committed to git** — similar to a lockfile, committing them means your team and CI share the cache from day one without waiting for a warm-up scan.
 
 ```sh
-git add .osv.lock
+git add .osv.lock   # or .snyk.lock
 ```
 
-To force a fresh scan, delete the file or disable caching for a single run:
+To force a fresh scan:
 
 ```sh
 OSV_NO_CACHE=true bun install
+# or
+SNYK_NO_CACHE=true bun install
 ```
 
 ---
@@ -155,67 +192,35 @@ bun run check:write   # Lint + format, auto-fix what it can
 bun-osv-scanner/
 ├── src/
 │   ├── __tests__/     # Test suite (bun:test)
-│   ├── cache.ts       # 24h filesystem cache
+│   ├── snyk/          # Snyk backend
+│   ├── cache.ts       # 24h lockfile cache
 │   ├── client.ts      # OSV API client
-│   ├── config.ts      # Constants and env vars
+│   ├── config.ts      # OSV constants and env vars
 │   ├── display.ts     # TTY progress spinner
-│   ├── index.ts       # Scanner entry point
-│   └── severity.ts    # Level classification
+│   ├── index.ts       # Entry point — dispatches to OSV or Snyk
+│   ├── osv.ts         # OSV scanner implementation
+│   └── severity.ts    # OSV level classification
 ├── bunfig.toml
 └── package.json
 ```
 
----
-
-## 🐛 Snyk scanner
-
-A second scanner backed by [Snyk's vulnerability database](https://security.snyk.io) is available as an alternative. Snyk's database is commercial and often surfaces issues earlier than OSV.
-
-### Setup
-
-A Snyk account, API token, and org ID are required.
-
-```toml
-# bunfig.toml
-[install.security]
-scanner = "@bun-security-scanner/osv-os/snyk"
-
-[install.env]
-SNYK_TOKEN = "your-token"
-SNYK_ORG_ID = "your-org-id"
-```
-
-### Configuration
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `SNYK_TOKEN` | — | **Required.** Snyk API token |
-| `SNYK_ORG_ID` | — | **Required.** Snyk organization ID |
-| `SNYK_FAIL_CLOSED` | `false` | Throw on network error instead of failing open |
-| `SNYK_NO_CACHE` | `false` | Always query Snyk fresh, bypassing the local cache |
-| `SNYK_CACHE_FILE` | `.snyk.lock` | Path to the cache file |
-| `SNYK_TIMEOUT_MS` | `10000` | Per-request timeout in milliseconds |
-| `SNYK_RATE_LIMIT` | `160` | Max requests per minute (hard cap: 180) |
-| `SNYK_CONCURRENCY` | `10` | Max concurrent connections |
-| `SNYK_API_BASE` | `https://api.snyk.io/rest` | Regional endpoint override |
-| `SNYK_API_VERSION` | `2024-04-29` | Snyk REST API version date |
-
-### How it differs from OSV
+### Backend comparison
 
 | | OSV | Snyk |
 |---|---|---|
 | API key required | No | Yes |
 | Batch endpoint | Yes (1000/req) | No (per-package, 180 req/min) |
 | Coverage | Community feeds + GitHub Advisory | Snyk's proprietary database |
-| Cache key prefix | `pkg@version` | `snyk:pkg@version` |
+| Cache file | `.osv.lock` | `.snyk.lock` |
 
 ---
 
 ## ⚠️ Limitations
 
 - Only scans npm packages with concrete semver versions. `workspace:`, `file:`, `git:`, and range-only specifiers are skipped.
-- Vulnerability data is sourced from OSV, which aggregates GitHub Advisory, NVD, and other feeds. Coverage may lag slightly behind a vulnerability's public disclosure.
-- The OSV batch API has a hard limit of 1,000 queries per request. Projects with more than 1,000 resolvable dependencies are split across multiple requests automatically.
+- OSV aggregates GitHub Advisory, NVD, and other feeds — coverage may lag slightly behind a vulnerability's public disclosure.
+- The OSV batch API has a hard limit of 1,000 queries per request. Larger projects are split across multiple requests automatically.
+- Snyk's per-package endpoint is rate-limited to 180 req/min. At that rate, a project with 2,000+ packages will take several minutes on the first scan.
 
 ---
 

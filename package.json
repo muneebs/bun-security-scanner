@@ -6,8 +6,7 @@
   "license": "MIT",
   "exports": {
     "./package.json": "./package.json",
-    ".": "./src/index.ts",
-    "./snyk": "./src/snyk/index.ts"
+    ".": "./src/index.ts"
   },
   "files": [
     "src",
