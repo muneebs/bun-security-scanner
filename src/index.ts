@@ -1,12 +1,19 @@
-import { scanner as osvScanner } from './osv';
-import { scanner as snykScanner } from './snyk/index';
+import { createScanner, type Backend } from './scanner';
+import { backend as osvBackend } from './osv';
+import { backend as snykBackend } from './snyk/index';
 
-const backend = (Bun.env.SCANNER_BACKEND ?? 'osv').toLowerCase();
+const registry: Record<string, Backend> = {
+  osv: osvBackend,
+  snyk: snykBackend,
+};
 
-if (backend !== 'osv' && backend !== 'snyk') {
+const backendName = (Bun.env.SCANNER_BACKEND ?? 'osv').toLowerCase();
+const selected = registry[backendName];
+
+if (!selected) {
   process.stderr.write(
-    `[@nebzdev/bun-security-scanner] Unknown SCANNER_BACKEND "${backend}", falling back to osv.\n`,
+    `[@nebzdev/bun-security-scanner] Unknown SCANNER_BACKEND "${backendName}", falling back to osv.\n`,
   );
 }
 
-export const scanner: Bun.Security.Scanner = backend === 'snyk' ? snykScanner : osvScanner;
+export const scanner: Bun.Security.Scanner = createScanner(selected ?? osvBackend);

@@ -1,5 +1,6 @@
 import { rename } from 'node:fs/promises';
-import { CACHE_TTL_MS } from './config';
+
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 export interface CacheEntry {
   advisories: Bun.Security.Advisory[];

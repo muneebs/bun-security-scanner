@@ -1,13 +1,17 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 
-// Mock the cache before index.ts is loaded so tests never touch the filesystem.
+// Mock the cache before the scanner modules are loaded so tests never touch the filesystem.
 mock.module("../cache", () => ({
   readCache: async () => ({}),
   writeCache: async () => {},
   isFresh: () => false,
 }));
 
-const { scanner } = await import("../index");
+// Import the OSV backend directly — bypasses SCANNER_BACKEND env var so
+// this test always exercises the OSV scanner regardless of local .env config.
+const { createScanner } = await import("../scanner");
+const { backend: osvBackend } = await import("../osv");
+const scanner = createScanner(osvBackend);
 
 function pkg(name: string, version: string): Bun.Security.Package {
   return { name, version, tarball: "", requestedRange: version };
