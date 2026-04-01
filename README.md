@@ -160,6 +160,48 @@ bun-osv-scanner/
 
 ---
 
+## 🐛 Snyk scanner
+
+A second scanner backed by [Snyk's vulnerability database](https://security.snyk.io) is available as an alternative. Snyk's database is commercial and often surfaces issues earlier than OSV.
+
+### Setup
+
+A Snyk account, API token, and org ID are required.
+
+```toml
+# bunfig.toml
+[install.security]
+scanner = "@bun-security-scanner/osv-os/snyk"
+
+[install.env]
+SNYK_TOKEN = "your-token"
+SNYK_ORG_ID = "your-org-id"
+```
+
+### Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SNYK_TOKEN` | — | **Required.** Snyk API token |
+| `SNYK_ORG_ID` | — | **Required.** Snyk organization ID |
+| `SNYK_FAIL_CLOSED` | `false` | Throw on network error instead of failing open |
+| `SNYK_NO_CACHE` | `false` | Always query Snyk fresh, bypassing the local cache |
+| `SNYK_TIMEOUT_MS` | `10000` | Per-request timeout in milliseconds |
+| `SNYK_CONCURRENCY` | `30` | Max parallel requests (hard cap: 180 to respect rate limit) |
+| `SNYK_API_BASE` | `https://api.snyk.io/rest` | Regional endpoint override |
+| `SNYK_API_VERSION` | `2024-04-29` | Snyk REST API version date |
+
+### How it differs from OSV
+
+| | OSV | Snyk |
+|---|---|---|
+| API key required | No | Yes |
+| Batch endpoint | Yes (1000/req) | No (per-package, 180 req/min) |
+| Coverage | Community feeds + GitHub Advisory | Snyk's proprietary database |
+| Cache key prefix | `pkg@version` | `snyk:pkg@version` |
+
+---
+
 ## ⚠️ Limitations
 
 - Only scans npm packages with concrete semver versions. `workspace:`, `file:`, `git:`, and range-only specifiers are skipped.
