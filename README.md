@@ -1,8 +1,9 @@
-# bun-osv-scanner
+# bun-security-scanner
 
 [![npm version](https://badge.fury.io/js/%40nebzdev%2Fbun-security-scanner.svg)](https://badge.fury.io/js/%40nebzdev%2Fbun-security-scanner)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Powered by OSV](https://img.shields.io/badge/powered%20by-OSV-4285F4.svg)](https://osv.dev)
+[![Powered by Snyk](https://img.shields.io/badge/powered%20by-Snyk-4C4A73.svg)](https://snyk.io)
 
 A [Bun security scanner](https://bun.com/docs/pm/security-scanner-api) that checks your dependencies against vulnerability databases before they get installed. Uses [Google's OSV database](https://osv.dev) by default — no API keys required.
 
