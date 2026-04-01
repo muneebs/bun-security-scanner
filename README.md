@@ -32,21 +32,25 @@ That's it. The scanner runs automatically on the next `bun install`.
 
 ### Local development
 
-To test a local build against your own project:
-
-```sh
-# In the scanner repo
-bun link
-
-# In your project
-bun link @bun-security-scanner/osv-os
-```
-
-Then point `bunfig.toml` at the local entry point:
+Point `bunfig.toml` directly at the entry file using an absolute or relative path:
 
 ```toml
 [install.security]
-scanner = "./node_modules/@bun-security-scanner/osv-os"
+scanner = "/absolute/path/to/bun-osv-scanner/src/index.ts"
+```
+
+Or relative to your project:
+
+```toml
+[install.security]
+scanner = "../bun-osv-scanner/src/index.ts"
+```
+
+For the Snyk scanner, swap the path:
+
+```toml
+[install.security]
+scanner = "../bun-osv-scanner/src/snyk/index.ts"
 ```
 
 ---
