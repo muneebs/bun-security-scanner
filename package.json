@@ -1,0 +1,23 @@
+{
+  "name": "@bun-security-scanner/osv-os",
+  "description": "Bun security scanner powered by Google's OSV vulnerability database",
+  "version": "1.0.0",
+  "author": "Muneeb Samuels",
+  "license": "MIT",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": "./src/index.ts"
+  },
+  "keywords": [
+    "bun",
+    "security",
+    "osv",
+    "scanner",
+    "vulnerability"
+  ],
+  "devDependencies": {
+    "@biomejs/biome": "2.4.10",
+    "@types/bun": "latest",
+    "typescript": "^5.0.0"
+  }
+}
