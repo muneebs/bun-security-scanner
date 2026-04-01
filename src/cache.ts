@@ -7,9 +7,21 @@ export interface CacheEntry {
 
 type Cache = Record<string, CacheEntry>;
 
+function isValidCache(data: unknown): data is Cache {
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) return false;
+  return Object.values(data).every(
+    (entry) =>
+      typeof entry === 'object' &&
+      entry !== null &&
+      Array.isArray((entry as CacheEntry).advisories) &&
+      typeof (entry as CacheEntry).cachedAt === 'number',
+  );
+}
+
 export async function readCache(): Promise<Cache> {
   try {
-    return JSON.parse(await Bun.file(CACHE_FILE).text());
+    const data: unknown = JSON.parse(await Bun.file(CACHE_FILE).text());
+    return isValidCache(data) ? data : {};
   } catch {
     return {};
   }
@@ -17,7 +29,11 @@ export async function readCache(): Promise<Cache> {
 
 export async function writeCache(cache: Cache): Promise<void> {
   try {
-    await Bun.write(CACHE_FILE, JSON.stringify(cache));
+    // Write to a temp file first, then rename — prevents partial-write corruption
+    // if the process is killed or two installs run concurrently.
+    const tmp = `${CACHE_FILE}.tmp`;
+    await Bun.write(tmp, JSON.stringify(cache, null, 2));
+    await Bun.$`mv ${tmp} ${CACHE_FILE}`.quiet();
   } catch {}
 }
 

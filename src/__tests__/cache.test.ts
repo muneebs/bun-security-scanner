@@ -55,6 +55,22 @@ describe("readCache", () => {
     expect(await readCache()).toEqual({});
   });
 
+  test("returns empty object when file contains valid JSON with wrong structure", async () => {
+    fileSpy.mockReturnValue({
+      text: async () => JSON.stringify({ "lodash@4.17.4": "not-an-entry" }),
+    } as unknown as ReturnType<typeof Bun.file>);
+
+    expect(await readCache()).toEqual({});
+  });
+
+  test("returns empty object when file contains a JSON array", async () => {
+    fileSpy.mockReturnValue({
+      text: async () => JSON.stringify([{ advisories: [], cachedAt: 0 }]),
+    } as unknown as ReturnType<typeof Bun.file>);
+
+    expect(await readCache()).toEqual({});
+  });
+
   test("returns parsed cache on valid file", async () => {
     const now = Date.now();
     const stored = { "lodash@4.17.4": { advisories: [], cachedAt: now } };
@@ -69,23 +85,29 @@ describe("readCache", () => {
 
 describe("writeCache", () => {
   let writeSpy: ReturnType<typeof spyOn<typeof Bun, "write">>;
+  let shellSpy: ReturnType<typeof spyOn<typeof Bun, "$">>;
 
   beforeEach(() => {
     writeSpy = spyOn(Bun, "write");
     writeSpy.mockResolvedValue(0);
+    shellSpy = spyOn(Bun, "$");
+    shellSpy.mockReturnValue({ quiet: async () => {} } as unknown as ReturnType<typeof Bun.$>);
   });
 
   afterEach(() => {
     writeSpy.mockRestore();
+    shellSpy.mockRestore();
   });
 
-  test("writes serialised cache to the configured file path", async () => {
+  test("writes serialised cache to a temp file then renames it", async () => {
     const cache = { "express@4.18.2": { advisories: [], cachedAt: 12345 } };
     await writeCache(cache);
 
     expect(writeSpy).toHaveBeenCalledTimes(1);
-    const [, content] = writeSpy.mock.calls[0] as unknown as [string, string];
+    const [path, content] = writeSpy.mock.calls[0] as unknown as [string, string];
+    expect(path).toContain(".tmp");
     expect(JSON.parse(content)).toEqual(cache);
+    expect(shellSpy).toHaveBeenCalledTimes(1);
   });
 
   test("does not throw if write fails", async () => {
