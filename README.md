@@ -223,8 +223,8 @@ The ignore file should be committed alongside your lockfile. It documents delibe
 ### Setup
 
 ```sh
-git clone https://github.com/muneebs/bun-osv-scanner.git
-cd bun-osv-scanner
+git clone https://github.com/muneebs/bun-security-scanner.git
+cd bun-security-scanner
 bun install
 ```
 
@@ -251,7 +251,7 @@ bun run check:write   # Lint + format, auto-fix what it can
 ### Project structure
 
 ```
-bun-osv-scanner/
+bun-security-scanner/
 ├── src/
 │   ├── __tests__/     # Test suite (bun:test)
 │   ├── snyk/          # Snyk backend
@@ -298,6 +298,6 @@ MIT © [Muneeb Samuels](https://github.com/muneebs)
 ## 🔗 Links
 
 - [📦 npm](https://www.npmjs.com/package/@nebzdev/bun-security-scanner)
-- [🐛 Issue tracker](https://github.com/muneebs/bun-osv-scanner/issues)
+- [🐛 Issue tracker](https://github.com/muneebs/bun-security-scanner/issues)
 - [🔍 OSV database](https://osv.dev)
 - [📖 Bun security scanner docs](https://bun.com/docs/pm/security-scanner-api)
