@@ -4,6 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Powered by OSV](https://img.shields.io/badge/powered%20by-OSV-4285F4.svg)](https://osv.dev)
 [![Powered by Snyk](https://img.shields.io/badge/powered%20by-Snyk-4C4A73.svg)](https://snyk.io)
+![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/muneebs/bun-security-scanner?utm_source=oss&utm_medium=github&utm_campaign=muneebs%2Fbun-security-scanner&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)
 
 A [Bun security scanner](https://bun.com/docs/pm/security-scanner-api) that checks your dependencies against vulnerability databases before they get installed. Uses [Google's OSV database](https://osv.dev) by default — no API keys required.
 
