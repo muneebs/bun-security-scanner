@@ -30,11 +30,11 @@
    fail_on_changes: "always"
    jobs:
      - name: format
-       run: bun format {staged_files}
+       run: biome format --write {staged_files}
        glob: "*.{js,ts,jsx,tsx}"
        stage_fixed: true
      - name: lint
-       run: bun lint {staged_files}
+       run: biome lint {staged_files}
        glob: "*.{js,ts,jsx,tsx}"
      - name: type-check
        run: bun type-check
