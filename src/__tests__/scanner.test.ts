@@ -296,6 +296,10 @@ reason = "transitive only"
 
   test('downgrades fatal advisory to warn in interactive mode when matched by ignore file', async () => {
     const origCI = process.env.CI;
+    const origIsTTYDescriptor = Object.getOwnPropertyDescriptor(
+      process.stdin,
+      'isTTY'
+    );
     // Simulate an interactive terminal session.
     process.env.CI = 'false';
     Object.defineProperty(process.stdin, 'isTTY', {
@@ -320,10 +324,11 @@ reason = "transitive only"
     } finally {
       if (origCI === undefined) delete process.env.CI;
       else process.env.CI = origCI;
-      Object.defineProperty(process.stdin, 'isTTY', {
-        value: undefined,
-        configurable: true,
-      });
+      if (origIsTTYDescriptor) {
+        Object.defineProperty(process.stdin, 'isTTY', origIsTTYDescriptor);
+      } else {
+        Reflect.deleteProperty(process.stdin, 'isTTY');
+      }
     }
   });
 

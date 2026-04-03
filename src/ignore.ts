@@ -8,7 +8,7 @@
  * package   = "lodash"
  * advisories = ["GHSA-35jh-r3h4-6jhm"]
  * reason    = "Only affects cloneDeep, which we do not use."
- * expires   = "2025-12-31"   # optional ISO date
+ * expires   = "2026-12-31"   # optional ISO date
  *
  * [[ignore]]
  * package   = "minimist"
@@ -17,8 +17,11 @@
  * ```
  *
  * Behaviour:
- * - `fatal` advisories matched by an active ignore entry are downgraded to `warn`.
+ * - `fatal` advisories matched by an active ignore entry are handled by mode:
+ *   - Interactive (no `CI=true` env var, stdin is a TTY): downgraded to `warn`.
+ *   - CI / non-interactive: suppressed entirely (logged to stderr, not returned).
  * - `warn` advisories matched by an active ignore entry are dropped entirely.
+ * - All suppressions are logged to stderr regardless of mode.
  * - Entries with an `expires` date re-activate after that date (UTC midnight).
  * - A missing `reason` is accepted but a notice is printed to stderr.
  * - `OSV_NO_IGNORE=true` disables all ignore file processing.
@@ -46,7 +49,7 @@ export const NO_IGNORE = Bun.env.OSV_NO_IGNORE === 'true';
  */
 function parseIgnoreToml(source: string): IgnoreEntry[] {
   const parsed = Bun.TOML.parse(source) as Record<string, unknown>;
-  const raw = parsed['ignore'];
+  const raw = parsed.ignore;
   if (!Array.isArray(raw)) return [];
 
   const entries: IgnoreEntry[] = [];
@@ -55,23 +58,23 @@ function parseIgnoreToml(source: string): IgnoreEntry[] {
     if (typeof item !== 'object' || item === null) continue;
     const row = item as Record<string, unknown>;
 
-    if (typeof row['package'] !== 'string' || !row['package']) continue;
+    if (typeof row.package !== 'string' || !row.package) continue;
 
-    const advisories = Array.isArray(row['advisories'])
-      ? (row['advisories'] as unknown[]).filter(
+    const advisories = Array.isArray(row.advisories)
+      ? (row.advisories as unknown[]).filter(
           (a): a is string => typeof a === 'string'
         )
       : [];
 
-    const entry: IgnoreEntry = { package: row['package'], advisories };
+    const entry: IgnoreEntry = { package: row.package, advisories };
 
-    if (typeof row['reason'] === 'string') entry.reason = row['reason'];
+    if (typeof row.reason === 'string') entry.reason = row.reason;
 
     // `expires` may be a quoted string or a bare TOML local date (parsed as Date).
-    if (typeof row['expires'] === 'string') {
-      entry.expires = row['expires'];
-    } else if (row['expires'] instanceof Date) {
-      entry.expires = row['expires'].toISOString().slice(0, 10);
+    if (typeof row.expires === 'string') {
+      entry.expires = row.expires;
+    } else if (row.expires instanceof Date) {
+      entry.expires = row.expires.toISOString().slice(0, 10);
     }
 
     entries.push(entry);

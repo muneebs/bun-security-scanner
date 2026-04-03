@@ -192,12 +192,13 @@ reason     = "Transitive only, no direct usage, no fix available."
 
 ### Behaviour
 
-| Level | Effect |
-|-------|--------|
-| `fatal` advisory matched | Downgraded to `warn` -- visible in output but no longer blocks the install |
-| `warn` advisory matched | Dropped entirely |
+| Advisory level | Session type | Effect |
+|----------------|--------------|--------|
+| `fatal` matched | Interactive (no `CI=true`, stdin is a TTY) | Downgraded to `warn` — visible in output but no longer blocks the install |
+| `fatal` matched | CI / non-interactive | Suppressed entirely — logged to stderr but not returned |
+| `warn` matched | Any | Suppressed entirely — logged to stderr but not returned |
 
-Both cases are logged to stderr so they remain visible in CI output. Ignored advisories are never silently swallowed.
+All suppressions are logged to stderr so they remain visible in CI output. Ignored advisories are never silently swallowed.
 
 - `expires` -- entries re-activate at UTC midnight on the given date, so you're reminded when to reassess
 - `advisories = ["*"]` -- wildcard suppresses all advisories for the package
