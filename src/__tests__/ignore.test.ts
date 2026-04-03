@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
-import { applyIgnoreList, loadIgnoreList, type IgnoreList } from '../ignore';
+import { applyIgnoreList, type IgnoreList, loadIgnoreList } from '../ignore';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
