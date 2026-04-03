@@ -1,12 +1,13 @@
 import type { OsvVulnerability } from './client';
 import { batchQuery, fetchVuln } from './client';
-import { CACHE_FILE, FAIL_CLOSED, NO_CACHE } from './config';
+import { CACHE_FILE, CACHE_TTL_MS, FAIL_CLOSED, NO_CACHE } from './config';
 import { type Backend, createScanner } from './scanner';
 import { advisoryUrl, severityLevel } from './severity';
 
 const backend: Backend = {
   name: 'OSV',
   cacheFile: CACHE_FILE,
+  ttl: CACHE_TTL_MS,
   noCache: NO_CACHE,
   failClosed: FAIL_CLOSED,
 

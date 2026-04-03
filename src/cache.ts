@@ -43,6 +43,6 @@ export async function writeCache(
   } catch {}
 }
 
-export function isFresh(entry: CacheEntry): boolean {
-  return Date.now() - entry.cachedAt < CACHE_TTL_MS;
+export function isFresh(entry: CacheEntry, ttl = CACHE_TTL_MS): boolean {
+  return Date.now() - entry.cachedAt < ttl;
 }

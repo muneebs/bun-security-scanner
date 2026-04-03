@@ -12,4 +12,5 @@ export const CONCURRENCY = Number(Bun.env.SNYK_CONCURRENCY) || 10;
 export const RATE_LIMIT = Math.min(Number(Bun.env.SNYK_RATE_LIMIT) || 160, 180);
 
 export const CACHE_FILE = Bun.env.SNYK_CACHE_FILE ?? '.snyk.lock';
-export const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+export const CACHE_TTL_MS =
+  Number(Bun.env.SNYK_CACHE_TTL_MS) || 24 * 60 * 60 * 1000;

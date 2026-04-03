@@ -1,10 +1,12 @@
 import { isFresh, readCache, writeCache } from './cache';
 import { isResolvable } from './client';
 import { startSpinner } from './display';
+import { applyIgnoreList, type IgnoreList, loadIgnoreList } from './ignore';
 
 export interface Backend {
   readonly name: string;
   readonly cacheFile: string;
+  readonly ttl: number;
   readonly noCache: boolean;
   readonly failClosed: boolean;
   validateConfig?(): void;
@@ -26,21 +28,27 @@ export function createScanner(backend: Backend): Bun.Security.Scanner {
       );
       if (queryable.length === 0) return [];
 
-      const cache = backend.noCache ? {} : await readCache(backend.cacheFile);
+      const [cache, ignoreList] = await Promise.all([
+        backend.noCache
+          ? Promise.resolve({} as Awaited<ReturnType<typeof readCache>>)
+          : readCache(backend.cacheFile),
+        loadIgnoreList(),
+      ]);
 
       const cachedAdvisories: Bun.Security.Advisory[] = [];
       const toQuery: Bun.Security.Package[] = [];
 
       for (const pkg of queryable) {
         const entry = cache[`${pkg.name}@${pkg.version}`];
-        if (entry && isFresh(entry)) {
+        if (entry && isFresh(entry, backend.ttl)) {
           cachedAdvisories.push(...entry.advisories);
         } else {
           toQuery.push(pkg);
         }
       }
 
-      if (toQuery.length === 0) return cachedAdvisories;
+      if (toQuery.length === 0)
+        return applyIgnores(cachedAdvisories, ignoreList);
 
       const hitCount = queryable.length - toQuery.length;
       const spinner = startSpinner(
@@ -61,7 +69,10 @@ export function createScanner(backend: Backend): Bun.Security.Scanner {
         }
         if (!backend.noCache) void writeCache(cache, backend.cacheFile);
 
-        return [...cachedAdvisories, ...[...advisoryMap.values()].flat()];
+        return applyIgnores(
+          [...cachedAdvisories, ...[...advisoryMap.values()].flat()],
+          ignoreList
+        );
       } catch (err) {
         spinner.stop();
 
@@ -74,8 +85,43 @@ export function createScanner(backend: Backend): Bun.Security.Scanner {
         process.stderr.write(
           `\n${backend.name} scan failed (${err instanceof Error ? err.message : err}), skipping.\n`
         );
-        return cachedAdvisories;
+        return applyIgnores(cachedAdvisories, ignoreList);
       }
     },
   };
+}
+
+/**
+ * Apply the ignore list to a set of advisories:
+ * - `fatal` advisories that are ignored are downgraded to `warn`
+ * - `warn` advisories that are ignored are dropped entirely
+ * - Both cases are logged to stderr so they remain visible in CI output
+ */
+function applyIgnores(
+  advisories: Bun.Security.Advisory[],
+  ignoreList: IgnoreList
+): Bun.Security.Advisory[] {
+  if (ignoreList.entries.length === 0) return advisories;
+
+  const result: Bun.Security.Advisory[] = [];
+
+  for (const advisory of advisories) {
+    const decision = applyIgnoreList(advisory, ignoreList);
+
+    if (decision.action === 'keep') {
+      result.push(advisory);
+    } else if (decision.action === 'downgrade') {
+      process.stderr.write(
+        `[@nebzdev/bun-security-scanner] Downgrading ${advisory.package} fatal advisory to warn (${advisory.url}) — ${decision.reason}\n`
+      );
+      result.push({ ...advisory, level: 'warn' });
+    } else {
+      // drop
+      process.stderr.write(
+        `[@nebzdev/bun-security-scanner] Suppressing ${advisory.package} advisory (${advisory.url}) — ${decision.reason}\n`
+      );
+    }
+  }
+
+  return result;
 }
