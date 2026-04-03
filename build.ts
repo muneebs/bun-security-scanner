@@ -32,10 +32,6 @@ const result = await Bun.build({
   target: 'bun',
   format: 'esm',
   minify: true,
-  define: {
-    BUILD_VERSION: JSON.stringify(version),
-    BUILD_TIME: JSON.stringify(buildTime),
-  },
 });
 
 const elapsed = ((performance.now() - start) / 1000).toFixed(2);

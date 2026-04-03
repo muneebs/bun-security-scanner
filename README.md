@@ -7,16 +7,17 @@
 
 A [Bun security scanner](https://bun.com/docs/pm/security-scanner-api) that checks your dependencies against vulnerability databases before they get installed. Uses [Google's OSV database](https://osv.dev) by default — no API keys required.
 
-- 🔍 **Automatic scanning**: runs transparently on every `bun install`
-- ⚡ **Fast**: 24-hour per-package lockfile cache means repeat installs skip the network entirely
-- 🔀 **Two backends**: OSV (free, no setup) or Snyk (commercial, broader coverage)
-- 🔒 **Fail-open by default**: a downed API never blocks your install
-- 🎯 **CVSS fallback**: uses score-based severity when a label isn't available
-- 🛠️ **Configurable**: tune behaviour via environment variables
+- Runs transparently on every `bun install`
+- Per-package lockfile cache (24h by default, configurable) means repeat installs skip the network entirely
+- Two backends: OSV (free, no setup) or Snyk (commercial, broader coverage)
+- Fails open by default, so a downed API never blocks your install
+- Falls back to CVSS score-based severity when a label isn't available
+- Supports a `.bun-security-ignore` file for false positives and accepted risks
+- Behaviour is tunable via environment variables
 
 ---
 
-## 📦 Installation
+## Installation
 
 ```sh
 bun add -d @nebzdev/bun-security-scanner
@@ -31,18 +32,9 @@ scanner = "@nebzdev/bun-security-scanner"
 
 That's it. The scanner runs automatically on the next `bun install`.
 
-### Local development
-
-Point `bunfig.toml` directly at the entry file using an absolute or relative path:
-
-```toml
-[install.security]
-scanner = "../bun-osv-scanner/src/index.ts"
-```
-
 ---
 
-## 🔀 Backends
+## Backends
 
 The scanner ships with two backends, controlled by the `SCANNER_BACKEND` environment variable.
 
@@ -74,27 +66,27 @@ SNYK_ORG_ID=your-org-id
 
 ---
 
-## 🛡️ How it works
+## How it works
 
 When `bun install` runs, Bun calls the scanner with the full list of packages to be installed. The scanner:
 
-1. **Filters** non-resolvable versions — workspace, git, file, and path dependencies are skipped
-2. **Checks the cache** — packages seen within the last 24 hours skip the network entirely
-3. **Queries the backend** for any uncached packages
-4. **Returns advisories** to Bun, which surfaces them as warnings or fatal errors
+1. Filters non-resolvable versions — workspace, git, file, and path dependencies are skipped
+2. Checks the cache — packages seen within the cache TTL (24h by default) skip the network entirely
+3. Queries the backend for any uncached packages
+4. Returns advisories to Bun, which surfaces them as warnings or fatal errors
 
 ---
 
-## ⚠️ Advisory levels
+## Advisory levels
 
 | Level | Trigger | Bun behaviour |
 |-------|---------|---------------|
-| `fatal` | CRITICAL or HIGH severity; or CVSS score ≥ 7.0 | Installation halts |
+| `fatal` | CRITICAL or HIGH severity; or CVSS score >= 7.0 | Installation halts |
 | `warn` | MODERATE or LOW severity; or CVSS score < 7.0 | User is prompted; auto-cancelled in CI |
 
 ---
 
-## ⚙️ Configuration
+## Configuration
 
 All options are set via environment variables — in your shell, or in a `.env` file at the project root (Bun loads it automatically).
 
@@ -111,8 +103,10 @@ All options are set via environment variables — in your shell, or in a `.env` 
 | `OSV_FAIL_CLOSED` | `false` | Throw on network error instead of failing open |
 | `OSV_NO_CACHE` | `false` | Always query OSV fresh, bypassing the local cache |
 | `OSV_CACHE_FILE` | `.osv.lock` | Path to the cache file |
+| `OSV_CACHE_TTL_MS` | `86400000` | Cache TTL in milliseconds (default: 24 hours) |
 | `OSV_TIMEOUT_MS` | `10000` | Per-request timeout in milliseconds |
 | `OSV_API_BASE` | `https://api.osv.dev/v1` | OSV API base URL |
+| `OSV_NO_IGNORE` | `false` | Disable `.bun-security-ignore` processing |
 
 ### Snyk backend
 
@@ -123,33 +117,49 @@ All options are set via environment variables — in your shell, or in a `.env` 
 | `SNYK_FAIL_CLOSED` | `false` | Throw on network error instead of failing open |
 | `SNYK_NO_CACHE` | `false` | Always query Snyk fresh, bypassing the local cache |
 | `SNYK_CACHE_FILE` | `.snyk.lock` | Path to the cache file |
+| `SNYK_CACHE_TTL_MS` | `86400000` | Cache TTL in milliseconds (default: 24 hours) |
 | `SNYK_TIMEOUT_MS` | `10000` | Per-request timeout in milliseconds |
 | `SNYK_RATE_LIMIT` | `160` | Max requests per minute (hard cap: 180) |
 | `SNYK_CONCURRENCY` | `10` | Max concurrent connections |
 | `SNYK_API_BASE` | `https://api.snyk.io/rest` | Regional endpoint override |
 | `SNYK_API_VERSION` | `2024-04-29` | Snyk REST API version date |
 
+### Ignore file
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `BUN_SECURITY_IGNORE_FILE` | `.bun-security-ignore` | Path to the ignore file |
+| `OSV_NO_IGNORE` | `false` | Disable all ignore file processing |
+
 ### Fail-open vs fail-closed
 
-By default the scanner **fails open**: if the backend is unreachable the scan is skipped and installation proceeds normally. Set `OSV_FAIL_CLOSED=true` or `SNYK_FAIL_CLOSED=true` to invert this.
+By default the scanner fails open: if the backend is unreachable the scan is skipped and installation proceeds normally. Set `OSV_FAIL_CLOSED=true` or `SNYK_FAIL_CLOSED=true` to invert this.
 
 ```sh
-# .env — strict mode
+# .env -- strict mode
 OSV_FAIL_CLOSED=true
 ```
 
 ---
 
-## 🗄️ Cache
+## Cache
 
-Results are cached per `package@version` in a lock file at the project root with a 24-hour TTL. Because a published package version is immutable, its vulnerability profile is stable within that window.
+Results are cached per `package@version` in a lock file at the project root. Because a published package version is immutable, its vulnerability profile is stable within the cache window.
 
-| Backend | Lock file |
-|---------|-----------|
-| OSV | `.osv.lock` |
-| Snyk | `.snyk.lock` |
+| Backend | Lock file | TTL env var |
+|---------|-----------|-------------|
+| OSV | `.osv.lock` | `OSV_CACHE_TTL_MS` |
+| Snyk | `.snyk.lock` | `SNYK_CACHE_TTL_MS` |
 
-The files are designed to be **committed to git** — similar to a lockfile, committing them means your team and CI share the cache from day one without waiting for a warm-up scan.
+The default TTL is 24 hours. In CI environments where cold-start scan time is a concern, increase it:
+
+```sh
+# .env.ci
+OSV_CACHE_TTL_MS=604800000   # 7 days
+SNYK_CACHE_TTL_MS=604800000  # 7 days
+```
+
+The lock files are designed to be committed to git. Like a lockfile, committing them means your team and CI share the cache from day one without waiting for a warm-up scan.
 
 ```sh
 git add .osv.lock   # or .snyk.lock
@@ -165,7 +175,49 @@ SNYK_NO_CACHE=true bun install
 
 ---
 
-## 🛠️ Development
+## Ignore file
+
+Not every advisory is actionable. A vulnerability may affect a code path your project doesn't use, have no fix available yet, or be a false positive. The `.bun-security-ignore` file lets you acknowledge these cases without blocking installs permanently.
+
+### Format
+
+```toml
+# .bun-security-ignore
+
+[[ignore]]
+package    = "lodash"
+advisories = ["GHSA-35jh-r3h4-6jhm"]
+reason     = "Only affects the cloneDeep path, which we do not use."
+expires    = "2025-12-31"   # optional -- re-surfaces automatically after this date
+
+[[ignore]]
+package    = "minimist"
+advisories = ["*"]           # wildcard -- suppress all advisories for this package
+reason     = "Transitive only, no direct usage, no fix available."
+```
+
+### Behaviour
+
+| Level | Effect |
+|-------|--------|
+| `fatal` advisory matched | Downgraded to `warn` -- visible in output but no longer blocks the install |
+| `warn` advisory matched | Dropped entirely |
+
+Both cases are logged to stderr so they remain visible in CI output. Ignored advisories are never silently swallowed.
+
+- `expires` -- entries re-activate at UTC midnight on the given date, so you're reminded when to reassess
+- `advisories = ["*"]` -- wildcard suppresses all advisories for the package
+- `reason` -- encouraged but not required; a notice is printed to stderr if omitted
+- `OSV_NO_IGNORE=true` -- disables all ignore file processing for strict environments
+- `BUN_SECURITY_IGNORE_FILE` -- override the default `.bun-security-ignore` path
+
+### Committing the file
+
+The ignore file should be committed alongside your lockfile. It documents deliberate risk-acceptance decisions for your whole team and CI.
+
+---
+
+## Development
 
 ### Setup
 
@@ -173,6 +225,15 @@ SNYK_NO_CACHE=true bun install
 git clone https://github.com/muneebs/bun-osv-scanner.git
 cd bun-osv-scanner
 bun install
+```
+
+### Local development
+
+Point `bunfig.toml` directly at the entry file using an absolute or relative path:
+
+```toml
+[install.security]
+scanner = "../bun-osv-scanner/src/index.ts"
 ```
 
 ### Commands
@@ -193,13 +254,16 @@ bun-osv-scanner/
 ├── src/
 │   ├── __tests__/     # Test suite (bun:test)
 │   ├── snyk/          # Snyk backend
-│   ├── cache.ts       # 24h lockfile cache
+│   ├── cache.ts       # Lockfile cache (configurable TTL)
 │   ├── client.ts      # OSV API client
 │   ├── config.ts      # OSV constants and env vars
 │   ├── display.ts     # TTY progress spinner
-│   ├── index.ts       # Entry point — dispatches to OSV or Snyk
+│   ├── ignore.ts      # .bun-security-ignore loader and matcher
+│   ├── index.ts       # Entry point -- dispatches to OSV or Snyk
 │   ├── osv.ts         # OSV scanner implementation
+│   ├── scanner.ts     # Shared scanner factory (cache + ignore orchestration)
 │   └── severity.ts    # OSV level classification
+├── dist/              # Compiled output (published to npm)
 ├── bunfig.toml
 └── package.json
 ```
@@ -215,24 +279,24 @@ bun-osv-scanner/
 
 ---
 
-## ⚠️ Limitations
+## Limitations
 
 - Only scans npm packages with concrete semver versions. `workspace:`, `file:`, `git:`, and range-only specifiers are skipped.
-- OSV aggregates GitHub Advisory, NVD, and other feeds — coverage may lag slightly behind a vulnerability's public disclosure.
+- OSV aggregates GitHub Advisory, NVD, and other feeds, so coverage may lag slightly behind a vulnerability's public disclosure.
 - The OSV batch API has a hard limit of 1,000 queries per request. Larger projects are split across multiple requests automatically.
 - Snyk's per-package endpoint is rate-limited to 180 req/min. At that rate, a project with 2,000+ packages will take several minutes on the first scan.
 
 ---
 
-## 📄 License
+## License
 
 MIT © [Muneeb Samuels](https://github.com/muneebs)
 
 ---
 
-## 🔗 Links
+## Links
 
-- [📦 npm](https://www.npmjs.com/package/@nebzdev/bun-security-scanner)
-- [🐛 Issue tracker](https://github.com/muneebs/bun-osv-scanner/issues)
-- [🔍 OSV database](https://osv.dev)
-- [📖 Bun security scanner docs](https://bun.com/docs/pm/security-scanner-api)
+- [npm](https://www.npmjs.com/package/@nebzdev/bun-security-scanner)
+- [Issue tracker](https://github.com/muneebs/bun-osv-scanner/issues)
+- [OSV database](https://osv.dev)
+- [Bun security scanner docs](https://bun.com/docs/pm/security-scanner-api)
