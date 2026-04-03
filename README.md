@@ -234,7 +234,7 @@ Point `bunfig.toml` directly at the entry file using an absolute or relative pat
 
 ```toml
 [install.security]
-scanner = "../bun-osv-scanner/src/index.ts"
+scanner = "../bun-security-scanner/src/index.ts"
 ```
 
 ### Commands
