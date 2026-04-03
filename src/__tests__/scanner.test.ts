@@ -221,3 +221,158 @@ describe('scanner.scan', () => {
     expect(advisories).toEqual([]);
   });
 });
+
+describe('scanner.scan — ignore file integration', () => {
+  let fetchSpy: ReturnType<typeof spyOn<typeof globalThis, 'fetch'>>;
+  let fileSpy: ReturnType<typeof spyOn<typeof Bun, 'file'>>;
+  let writeSpy: ReturnType<typeof spyOn<typeof Bun, 'write'>>;
+  let renameSpy: ReturnType<typeof spyOn<typeof fsPromises, 'rename'>>;
+
+  const IGNORE_TOML = `
+[[ignore]]
+package = "lodash"
+advisories = ["GHSA-aaa-bbb-cccc"]
+reason = "cloneDeep not used"
+
+[[ignore]]
+package = "minimist"
+advisories = ["*"]
+reason = "transitive only"
+`;
+
+  beforeEach(() => {
+    fetchSpy = spyOn(globalThis, 'fetch');
+    const origBunFile = Bun.file.bind(Bun);
+    fileSpy = spyOn(Bun, 'file');
+    fileSpy.mockImplementation(((path: unknown, opts?: BlobPropertyBag) => {
+      if (path === '.bun-security-ignore') {
+        return { text: async () => IGNORE_TOML } as unknown as ReturnType<
+          typeof Bun.file
+        >;
+      }
+      if (typeof path === 'string') {
+        return {
+          text: async () => {
+            throw new Error('ENOENT');
+          },
+        } as unknown as ReturnType<typeof Bun.file>;
+      }
+      return origBunFile(path as Parameters<typeof Bun.file>[0], opts);
+    }) as typeof Bun.file);
+    writeSpy = spyOn(Bun, 'write');
+    writeSpy.mockResolvedValue(0);
+    renameSpy = spyOn(fsPromises, 'rename');
+    renameSpy.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    fetchSpy.mockRestore();
+    fileSpy.mockRestore();
+    writeSpy.mockRestore();
+    renameSpy.mockRestore();
+  });
+
+  test('drops fatal advisory in non-interactive mode when matched by ignore file', async () => {
+    const origCI = process.env.CI;
+    process.env.CI = 'true';
+    try {
+      mockOsvResponses(
+        fetchSpy,
+        ['GHSA-aaa-bbb-cccc'],
+        [makeOsvVuln('GHSA-aaa-bbb-cccc', 'HIGH', 'Prototype Pollution')]
+      );
+
+      const advisories = await scanner.scan({
+        packages: [pkg('lodash', '4.17.4')],
+      });
+
+      // CI mode: ignored fatal is dropped so the install proceeds.
+      expect(advisories).toHaveLength(0);
+    } finally {
+      if (origCI === undefined) delete process.env.CI;
+      else process.env.CI = origCI;
+    }
+  });
+
+  test('downgrades fatal advisory to warn in interactive mode when matched by ignore file', async () => {
+    const origCI = process.env.CI;
+    const origIsTTYDescriptor = Object.getOwnPropertyDescriptor(
+      process.stdin,
+      'isTTY'
+    );
+    // Simulate an interactive terminal session.
+    process.env.CI = 'false';
+    Object.defineProperty(process.stdin, 'isTTY', {
+      value: true,
+      configurable: true,
+    });
+
+    try {
+      mockOsvResponses(
+        fetchSpy,
+        ['GHSA-aaa-bbb-cccc'],
+        [makeOsvVuln('GHSA-aaa-bbb-cccc', 'HIGH', 'Prototype Pollution')]
+      );
+
+      const advisories = await scanner.scan({
+        packages: [pkg('lodash', '4.17.4')],
+      });
+
+      expect(advisories).toHaveLength(1);
+      expect(advisories[0]?.level).toBe('warn');
+      expect(advisories[0]?.package).toBe('lodash');
+    } finally {
+      if (origCI === undefined) delete process.env.CI;
+      else process.env.CI = origCI;
+      if (origIsTTYDescriptor) {
+        Object.defineProperty(process.stdin, 'isTTY', origIsTTYDescriptor);
+      } else {
+        Reflect.deleteProperty(process.stdin, 'isTTY');
+      }
+    }
+  });
+
+  test('drops warn advisory when matched by ignore file', async () => {
+    mockOsvResponses(
+      fetchSpy,
+      ['GHSA-aaa-bbb-cccc'],
+      [makeOsvVuln('GHSA-aaa-bbb-cccc', 'MODERATE', 'Prototype Pollution')]
+    );
+
+    const advisories = await scanner.scan({
+      packages: [pkg('lodash', '4.17.4')],
+    });
+
+    expect(advisories).toHaveLength(0);
+  });
+
+  test('wildcard entry drops all advisories for the package', async () => {
+    mockOsvResponses(
+      fetchSpy,
+      ['GHSA-xxx-yyy-zzzz'],
+      [makeOsvVuln('GHSA-xxx-yyy-zzzz', 'MODERATE', 'Some vuln')]
+    );
+
+    const advisories = await scanner.scan({
+      packages: [pkg('minimist', '1.2.5')],
+    });
+
+    expect(advisories).toHaveLength(0);
+  });
+
+  test('ignore entry does not affect other packages', async () => {
+    mockOsvResponses(
+      fetchSpy,
+      ['GHSA-aaa-bbb-cccc'],
+      [makeOsvVuln('GHSA-aaa-bbb-cccc', 'HIGH', 'Prototype Pollution')]
+    );
+
+    const advisories = await scanner.scan({
+      packages: [pkg('express', '4.18.2')],
+    });
+
+    // "express" is not in the ignore list — advisory kept as fatal
+    expect(advisories).toHaveLength(1);
+    expect(advisories[0]?.level).toBe('fatal');
+  });
+});
